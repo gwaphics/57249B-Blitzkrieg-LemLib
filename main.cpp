@@ -141,7 +141,7 @@ void competition_initialize() {}
  * from where it left off.
  */
 
-int chosenAuton = 1;
+int chosenAuton = 2;
 
 void autonomous() {
     // set position to x:0, y:0, heading:0
@@ -156,10 +156,37 @@ void autonomous() {
 			// Turn Test
 			chassis.turnToHeading(90, 5000);
 			chassis.turnToHeading(0, 5000);
+			break;
 		case 1:
 			// Drive Test
 			chassis.moveToPoint(0, 20, 1000);
 			chassis.moveToPoint(0, 0, 1000, {.forwards = false});
+			break;
+		case 2:
+			// Blue Negative
+			// Get mogo
+			clamp.set_value(true);
+			chassis.moveToPoint(5, -20, 1500, {.forwards = false});
+			chassis.waitUntilDone();
+			clamp.set_value(false);
+			pros::delay(300);
+			// Get first ring (not match load) (bottom of 2 ring stack)
+			intake_motors.move(270);
+			chassis.moveToPose(-12, -25, 270, 1500, {.minSpeed = 30});
+			// Get second ring (ring on bottom left of pile)
+			chassis.moveToPose(-10, -40, 180, 1500);
+			chassis.moveToPoint(-15, -25, 1500, {.forwards = false});
+			// Get third ring (ring on bottom right of pile)
+			chassis.moveToPose(-20, -43, 180, 1500);
+			// Go back and get fourth ring
+			chassis.moveToPoint(-20, 0, 1500, {.forwards = false});
+			intakeLift.set_value(false);
+			chassis.moveToPose(25, 0, 90, 1500);
+			pros::delay(300);
+			intakeLift.set_value(true);
+			// Hit ladder
+			chassis.moveToPose(20, -20, 0, 1500);
+			break;
 	}
 }
 
