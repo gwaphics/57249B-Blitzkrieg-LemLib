@@ -141,7 +141,7 @@ void competition_initialize() {}
  * from where it left off.
  */
 
-int chosenAuton = 2;
+int chosenAuton = 3;
 
 void autonomous() {
     // set position to x:0, y:0, heading:0
@@ -180,12 +180,42 @@ void autonomous() {
 			chassis.moveToPose(-20, -43, 180, 1500);
 			// Go back and get fourth ring
 			chassis.moveToPoint(-20, 0, 1500, {.forwards = false});
-			intakeLift.set_value(false);
+			intakeLift.set_value(true);
 			chassis.moveToPose(25, 0, 90, 1500);
 			pros::delay(300);
-			intakeLift.set_value(true);
+			intakeLift.set_value(false);
 			// Hit ladder
 			chassis.moveToPose(20, -20, 0, 1500);
+			break;
+		case 3:
+			// Red Positive
+			// Mogo Rush
+			clamp.set_value(true);
+			chassis.moveToPoint(0, -20, 1500, {.forwards = false});
+			chassis.moveToPoint(10, -37, 1500, {.forwards = false});
+			chassis.waitUntilDone();
+			clamp.set_value(false);
+			pros::delay(500);
+			// Get first ring
+			intake_motors.move(270);
+			chassis.moveToPose(15, -20, 0, 1500);
+			// Turn to second mogo and unclamp first
+			chassis.turnToHeading(270, 750);
+			chassis.waitUntilDone();
+			clamp.set_value(true);
+			// Get second mogo
+			chassis.moveToPoint(35, -20, 1500, {.forwards = false});
+			chassis.waitUntilDone();
+			clamp.set_value(false);
+			pros::delay(500);
+			// Get third ring
+			intakeLift.set_value(true);
+			chassis.moveToPoint(60, -5, 1500);
+			chassis.waitUntilDone();
+			intakeLift.set_value(false);
+			// Hit ladder
+			chassis.turnToHeading(0, 1500);
+			chassis.moveToPoint(60, -20, 1500, {.forwards = false});
 			break;
 	}
 }
@@ -209,6 +239,7 @@ void opcontrol() {
     // pistons
 	bool clampExtended = false;
   	bool doinkerExtended = false;
+	bool intakeExtended = false;
 
     while (true) {
         // Exponential drive
@@ -248,6 +279,13 @@ void opcontrol() {
 			doinkerExtended = !doinkerExtended;
 			pros::delay(250);
 			doinker.set_value(doinkerExtended);
+		}
+
+		// Single button doinker
+		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_DOWN)) {
+			intakeExtended = !intakeExtended;
+			pros::delay(250);
+			intakeLift.set_value(intakeExtended);
 		}
 		
 		
