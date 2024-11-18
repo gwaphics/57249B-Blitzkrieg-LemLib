@@ -141,7 +141,12 @@ void competition_initialize() {}
  * from where it left off.
  */
 
-int chosenAuton = 3;
+// 0 - turn test
+// 1 - drive test
+// 2 - blue negative
+// 3 - red positive (mogo rush) (no sig wp)
+// 4 - red positive (mogo rush) (sig wp)
+int chosenAuton = 1;
 
 void autonomous() {
     // set position to x:0, y:0, heading:0
@@ -159,7 +164,7 @@ void autonomous() {
 			break;
 		case 1:
 			// Drive Test
-			chassis.moveToPoint(0, 20, 1000);
+			chassis.moveToPoint(0, 24, 1000);
 			chassis.moveToPoint(0, 0, 1000, {.forwards = false});
 			break;
 		case 2:
@@ -171,7 +176,7 @@ void autonomous() {
 			clamp.set_value(false);
 			pros::delay(300);
 			// Get first ring (not match load) (bottom of 2 ring stack)
-			intake_motors.move(270);
+			intake_motors.move(127);
 			chassis.moveToPose(-12, -25, 270, 1500, {.minSpeed = 30});
 			// Get second ring (ring on bottom left of pile)
 			chassis.moveToPose(-10, -40, 180, 1500);
@@ -186,37 +191,50 @@ void autonomous() {
 			intakeLift.set_value(false);
 			// Hit ladder
 			chassis.moveToPose(20, -20, 0, 1500);
+			chassis.waitUntilDone();
+			intake_motors.move(0);
 			break;
 		case 3:
 			// Red Positive
 			// Mogo Rush
 			clamp.set_value(true);
-			chassis.moveToPoint(0, -20, 1500, {.forwards = false});
-			chassis.moveToPoint(10, -37, 1500, {.forwards = false});
+			chassis.moveToPoint(0, -22, 1500, {.forwards = false});
+			chassis.moveToPoint(10, -40, 1500, {.forwards = false, .maxSpeed = 70});
 			chassis.waitUntilDone();
 			clamp.set_value(false);
-			pros::delay(500);
+			pros::delay(300);
 			// Get first ring
-			intake_motors.move(270);
-			chassis.moveToPose(15, -20, 0, 1500);
-			// Turn to second mogo and unclamp first
-			chassis.turnToHeading(270, 750);
+			intake_motors.move(127);
+			chassis.turnToHeading(0, 750);
+			chassis.moveToPose(10, -23, 0, 1500);
+			// Drop fitst mogo
+			chassis.turnToHeading(180, 750);
 			chassis.waitUntilDone();
 			clamp.set_value(true);
+			pros::delay(300);
+			intake_motors.move(0);
+			// Turn to second mogo and get ready to get it
+			chassis.turnToHeading(270, 750);
+			chassis.waitUntilDone();
 			// Get second mogo
-			chassis.moveToPoint(35, -20, 1500, {.forwards = false});
+			chassis.moveToPoint(25, -23, 1500, {.forwards = false});
 			chassis.waitUntilDone();
 			clamp.set_value(false);
-			pros::delay(500);
+			pros::delay(300);
+			intake_motors.move(127);
 			// Get third ring
 			intakeLift.set_value(true);
 			chassis.moveToPoint(60, -5, 1500);
 			chassis.waitUntilDone();
 			intakeLift.set_value(false);
+			//chassis.moveToPoint(65, -5, 1500);
 			// Hit ladder
-			chassis.turnToHeading(0, 1500);
-			chassis.moveToPoint(60, -20, 1500, {.forwards = false});
+			chassis.turnToHeading(0, 750);
+			chassis.moveToPoint(60, -25, 1500, {.forwards = false});
+			chassis.waitUntilDone();
+			intake_motors.move(0);
 			break;
+
 	}
 }
 
@@ -292,4 +310,5 @@ void opcontrol() {
         // delay to save resources
         pros::delay(25);
     }
+
 }
