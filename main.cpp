@@ -2,7 +2,7 @@
 #include "lemlib/api.hpp" // IWYU pragma: keep
 #include "lemlib/chassis/chassis.hpp"
 #include "pros/misc.h"
-#include "pros/motors.h"
+
 
 pros::Controller master(pros::E_CONTROLLER_MASTER);
 
@@ -23,18 +23,21 @@ lemlib::Drivetrain drivetrain(&left_motors, // left motor group
                               2 // horizontal drift is 2 (for now)
 );
 
+
 // creates an imu on port 17 -- inertial sensor (imu = inertial measurement unit)
 pros::Imu imu(17);
 
-// create a v5 rotation sensor on port 16
+// create a v5 rotation sensor on port 16 (verticle) and 7 (horizontile)
 pros::Rotation vertical_encoder(16);
+pros::Rotation horizontile_encoder(7);
 
 //vertical tracking wheel --the rotational sensor
 lemlib::TrackingWheel vertical_tracking_wheel(&vertical_encoder, lemlib::Omniwheel::NEW_275, .5);
+lemlib::TrackingWheel horizontile_tracking_wheel(&horizontile_encoder, lemlib::Omniwheel::NEW_275, -.25);
 
 lemlib::OdomSensors sensors(&vertical_tracking_wheel, // vertical tracking wheel 1
                             nullptr, // vertical tracking wheel 2, set to nullptr bc we don't have one
-                            nullptr,	// horizontal tracking wheel 1, set to nullptr bc we don't have one
+                            &horizontile_tracking_wheel,	// horizontal tracking wheel 1
                             nullptr, // horizontal tracking wheel 2, set to nullptr bc we don't have a second one
                             &imu // inertial sensor
 );
@@ -141,12 +144,14 @@ void competition_initialize() {}
  * from where it left off.
  */
 
+// ALMOST NONE OF THESE ARE CORRECT SO FIX WHEN DOING MATCH AUTOS
 // 0 - turn test
 // 1 - drive test
 // 7 - blue negative
 // 3 - red positive (mogo rush) (no sig wp)
 // 4 - red negative
-int chosenAuton = 2;
+// 10 - skills
+int chosenAuton = 10;
 
 void autonomous() {
     // set position to x:0, y:0, heading:0
@@ -175,24 +180,29 @@ void autonomous() {
 			chassis.waitUntilDone();
 			clamp.set_value(false);
 			pros::delay(300);
+
 			// Get first ring (not match load) (bottom of 2 ring stack)
 			intake_motors.move(127);
-			chassis.moveToPose(-12, -25, 270, 1500, {.minSpeed = 30});
+			chassis.moveToPose(-10, -25, 270, 1500, {.minSpeed = 30}); //-12
+
 			// Get second ring (ring on bottom left of pile)
-			chassis.moveToPose(-10, -40, 180, 1500);
-			chassis.moveToPoint(-15, -25, 1500, {.forwards = false});
+			//chassis.moveToPose(-10, -40, 180, 1500); //40
+			chassis.moveToPoint(-17, -25, 1500, {.forwards = false}); //-15
+
 			// Get third ring (ring on bottom right of pile)
-			chassis.moveToPose(-20, -43, 180, 1500);
+			chassis.moveToPose(-20, -43, 180, 1500); //47
+
 			// Go back and get fourth ring
 			chassis.moveToPoint(-20, 0, 1500, {.forwards = false});
 			intakeLift.set_value(true);
-			chassis.moveToPose(25, 0, 90, 1500);
-			pros::delay(300);
+			chassis.moveToPose(25, 0, 90, 1500); //move backwards to prep for grabbing fourth ring
+			pros::delay(200);
 			intakeLift.set_value(false);
-			// Hit ladder
+			// Hit ladders
 			chassis.moveToPose(20, -20, 0, 1500);
-			chassis.waitUntilDone();
+			//chassis.waitUntilDone();
 			intake_motors.move(0);
+            
 			break;
 		case 3:
 			// Red Positive
@@ -212,7 +222,7 @@ void autonomous() {
 			chassis.waitUntilDone();
 			clamp.set_value(true);
 			pros::delay(300);
-			intake_motors.move(0);
+		
 			// Turn to second mogo and get ready to get it
 			chassis.turnToHeading(270, 750);
 			chassis.waitUntilDone();
@@ -238,27 +248,33 @@ void autonomous() {
 		// Red Negative
 			// Get mogo
 			clamp.set_value(true);
-			chassis.moveToPoint(-5, -20, 1500, {.forwards = false});
+			chassis.moveToPoint(-5, -22, 1500, {.forwards = false, .maxSpeed = 60});
 			chassis.waitUntilDone();
 			clamp.set_value(false);
 			pros::delay(300);
 			// Get first ring (not match load) (bottom of 2 ring stack)
 			intake_motors.move(127);
-			chassis.moveToPose(0, -25, -270, 1500, {.minSpeed = 30});
+			chassis.turnToHeading(90, 750); //750 timeout
+			chassis.moveToPoint(10, -23, 1500);
 			// Get second ring (ring on bottom left of pile)
-			chassis.moveToPose(20, -35, -180, 1500); //12 x -40
-			chassis.moveToPoint(10, -40, 1500, {.forwards = false}); //x15 y might need to be 43
+			chassis.moveToPose(20, -40, -180, 1500); //12 x -40
+			chassis.moveToPoint(10, -30, 1500, {.forwards = false}); //prep back to get third ring
 			// Get third ring (ring on bottom right of pile)
-			chassis.moveToPose(20, -43, -180, 1500);
+			chassis.moveToPose(10, -41, -180, 1500); 
+			pros::delay(200);
 			// Go back and get fourth ring
-			chassis.moveToPoint(20, 0, 1500, {.forwards = false});
-			intakeLift.set_value(true);
-			chassis.moveToPose(-25, 0, -90, 1500);
-			pros::delay(300);
-			intakeLift.set_value(false);
+			// chassis.moveToPoint(20, 0, 1500);
+			// intakeLift.set_value(true);
+			// chassis.moveToPose(-25, 0, -90, 1500);
+			// pros::delay(300);
+			// intakeLift.set_value(false);
 			// Hit ladder
-			chassis.moveToPose(-20, -20, 0, 1500);
+
+			//chassis.moveToPose(-24, 0, 0, 1500, {.forwards = false});
+			chassis.moveToPose(-25, -20, 3, 1500);
 			chassis.waitUntilDone();
+			intake_motors.move(0);
+			break;
 		case 5:
 			clamp.set_value(true);
 			chassis.moveToPoint(5, -20, 1500, {.forwards = false});
@@ -286,7 +302,7 @@ void autonomous() {
 			// blue Positive
 			// Mogo Rush
 			clamp.set_value(true);
-			chassis.moveToPoint(0, -26, 1500, {.forwards = false}); 
+			chassis.moveToPoint(0, -22, 1500, {.forwards = false}); 
 			chassis.moveToPoint(-10, -42, 1500, {.forwards = false, .maxSpeed = 70});
 			chassis.waitUntilDone();
 			clamp.set_value(false);
@@ -305,22 +321,25 @@ void autonomous() {
 			chassis.turnToHeading(-270, 750);
 			chassis.waitUntilDone();
 			// Get second mogo
-			chassis.moveToPoint(-28, -25, 1500, {.forwards = false, .maxSpeed = 80});
+			chassis.moveToPose(-28, -22, 90, 1500, {.forwards = false, .maxSpeed = 70});
 			chassis.waitUntilDone();
 			clamp.set_value(false);
 			pros::delay(300);
 			intake_motors.move(127);
+
+			chassis.moveToPoint(-50, -30, 1500, {.forwards = false, .maxSpeed = 50});
 			// Get third ring
-			intakeLift.set_value(true);
-			chassis.moveToPoint(-60, -5, 1500);
-			chassis.waitUntilDone();
-			intakeLift.set_value(false);
-			chassis.moveToPoint(-65, -5, 1500);
+			// intakeLift.set_value(true);
+			// chassis.moveToPoint(-55, -5, 1500, {.maxSpeed = 70});
+			// chassis.waitUntilDone();
+			// intakeLift.set_value(false);
+			// chassis.moveToPoint(-60, -5, 1500);
 			// Hit ladder
-			chassis.turnToHeading(0, 750);
-			chassis.moveToPoint(-60, -20, 1500, {.forwards = false});
+			// chassis.turnToHeading(0, 750);
+			// chassis.moveToPoint(-55, -20, 1500, {.forwards = false});
 			chassis.waitUntilDone();
 			intake_motors.move(0); 
+			break;
 		case 7:
 			// Get mogo
 			clamp.set_value(true);
@@ -353,7 +372,190 @@ void autonomous() {
 			// // Hit ladder
 			// chassis.moveToPose(20, -20, 0, 1500);
 			// chassis.waitUntilDone();
-	}
+        case 8: //blue neg
+            // chassis.setPose(0, 0, 0);
+            //grab mogo
+            clamp.set_value(true);
+			chassis.moveToPoint(0, -25, 1500, {.forwards = false});
+			chassis.waitUntilDone();
+			clamp.set_value(false);
+			pros::delay(200);
+            // chassis.moveToPoint(0, -25, 1500, {.forwards = false, .maxSpeed = 60}); 
+			// //pros::delay(300);
+            // clamp.set_value(false);
+            // //first ring
+            chassis.turnToHeading(270, 1500);
+            chassis.waitUntilDone();
+            chassis.setPose(0, 0, 0);
+            intake_motors.move(200);
+            //second ring
+            //chassis.turnToHeading(270, 1500);
+            chassis.moveToPoint(0, 25, 1500, {.forwards = true}); //24 but we move more so that it is in line with getting the second ring
+            intake_motors.move(0);
+
+            //sophia and jake code from case 2 
+            // Get third ring (ring on bottom right of pile)
+        
+            /**chassis.setPose(0,0,0);
+            intake_motors.move(127);
+            chassis.moveToPoint(0, 20, 1500);//
+            chassis.turnToHeading(20, 1500);
+            chassis.moveToPoint(0, -15, 1500);
+            intake_motors.move(0);
+            chassis.setPose(0,0,0);
+            chassis.turnToHeading(200, 1500);
+            chassis.moveToPoint(0, 30, 1500);
+
+            chassis.moveToPose(-20, -43, 180, 1500);
+			// Go back and get fourth ring
+			chassis.moveToPoint(-20, 0, 1500, {.forwards = false});
+			intakeLift.set_value(true);
+			chassis.moveToPose(25, 0, 90, 1500);
+			pros::delay(300);
+			intakeLift.set_value(false);
+			// Hit ladder
+			chassis.moveToPose(20, -20, 0, 1500);
+			chassis.waitUntilDone();
+			intake_motors.move(0);
+           
+            /**
+            chassis.turnToHeading(270, 1500);
+            chassis.setPose(0,0,0);
+            intake_motors.move(125);
+            chassis.moveToPoint(0, 25, 1500);
+            chassis.moveToPoint(0, -30, 1500);
+            chassis.turnToHeading(30, 1500);
+            chassis.moveToPoint(0, 30, 1500, {.maxSpeed = 60});
+*/
+            break;
+		case 9:
+		// safe positive blue
+			clamp.set_value(true);
+			chassis.moveToPoint(-5, -20, 1500, {.forwards = false, .maxSpeed = 70});
+			chassis.waitUntilDone();
+			clamp.set_value(false);
+			pros::delay(300);
+
+			// Get first ring (not match load) (bottom of 2 ring stack)
+			intake_motors.move(127);
+			chassis.moveToPose(15, -20, -270, 1500, {.minSpeed = 30}); //-12
+			chassis.waitUntilDone();
+			pros::delay(300);
+
+			// touch ladder
+			chassis.moveToPose(-30, -30, 270, 1500, {.forwards = false, .maxSpeed = 70});
+			chassis.waitUntilDone();
+			intake_motors.move(0);
+			break;
+		case 10:
+		// skills
+			// Score preload on alliance stake (retarted version)
+			// intake_motors.move(127);
+			// pros::delay(250);
+			// intake_motors.move(0);
+			// pros::delay(100);
+			// intake_motors.move(-127);
+			// pros::delay(1200);
+			// intake_motors.move(0);
+
+			// Score preload on alliance stake (normal ish version)
+			intake_motors.move(-127);
+			pros::delay(1200);
+			intake_motors.move(0);
+
+			// Not hit wall
+			chassis.moveToPoint(0, 5, 1500);
+			chassis.waitUntilDone();
+
+			// Get first mogo
+			clamp.set_value(true);
+			chassis.moveToPose(20, 12, 270, 1500, {.forwards = false, .minSpeed = 50});
+			chassis.waitUntilDone();
+			clamp.set_value(false);
+			pros::delay(300);
+
+			// Get first ring on first mogo
+			intake_motors.move(127);
+			chassis.moveToPose(24, 35, 0, 1500, {.minSpeed = 70});
+
+			// Get second ring on first mogo
+			chassis.moveToPose(55, 50, 60, 1500, {.minSpeed = 70});
+			chassis.waitUntilDone();
+			pros::delay(300);
+
+			// Not hit wall
+			chassis.moveToPoint(45, 50, 1500, {.forwards = false});
+
+			// Get third ring on first mogo
+			chassis.moveToPose(50, 35, 180, 1500, {.minSpeed = 70});
+			chassis.waitUntilDone();
+			pros::delay(300);
+
+			// Get fourth ane fifth ring on first mogo
+			chassis.moveToPose(45, -10, 180, 1500, {.maxSpeed = 50});
+
+			// Not hit wall
+			chassis.moveToPoint(40, 10, 1500, {.forwards = false, .minSpeed = 50});
+
+			// Get sixth ring on first mogo
+			chassis.moveToPose(65, 10, 90, 1500, {.minSpeed = 30});
+			
+			// Drop mogo in corner
+			chassis.turnToHeading(0, 750);
+			chassis.moveToPoint(70, -10, 1500, {.forwards = false, .minSpeed = 30});
+			chassis.waitUntilDone();
+			clamp.set_value(true);
+
+
+			// Middle
+
+
+			// Go to beginning
+			chassis.moveToPose(0, 20, 0, 1500);
+
+			// // Get second mogo
+			// chassis.moveToPose(-24, 12, -270, 1500, {.forwards = false, .maxSpeed = 70});
+			// chassis.waitUntilDone();
+			// clamp.set_value(false);
+			// pros::delay(300);
+
+			// // Get first ring on first mogo
+			// intake_motors.move(127);
+			// chassis.moveToPose(-24, 35, 0, 1500, {.minSpeed = 70});
+
+			// // Get second ring on first mogo
+			// chassis.moveToPose(-55, 50, -60, 1500, {.minSpeed = 70});
+			// chassis.waitUntilDone();
+			// pros::delay(300);
+
+			// // Not hit wall
+			// chassis.moveToPoint(-45, 50, 1500, {.forwards = false});
+
+			// // Get third ring on first mogo
+			// chassis.moveToPose(-50, 35, 180, 1500, {.minSpeed = 70});
+			// chassis.waitUntilDone();
+			// pros::delay(300);
+
+			// // Get fourth ane fifth ring on first mogo
+			// chassis.moveToPose(-45, -25, 180, 1500, {.maxSpeed = 50});
+
+			// // Not hit wall
+			// chassis.moveToPoint(-40, 10, 1500, {.forwards = false, .minSpeed = 50});
+
+			// // Get sixth ring on first mogo
+			// chassis.moveToPose(-65, 10, -90, 1500, {.minSpeed = 30});
+			
+			// // Drop mogo in corner
+			// chassis.turnToHeading(0, 750);
+			// chassis.moveToPoint(-70, -25, 1500, {.forwards = false, .minSpeed = 30});
+			// chassis.waitUntilDone();
+			// clamp.set_value(true);
+
+			// // Stop everything
+			// chassis.waitUntilDone();
+			// //intake_motors.move(0);
+			break;
+    }
 }
 
 /**
