@@ -2,17 +2,46 @@
 #include "lemlib/api.hpp" // IWYU pragma: keep
 #include "lemlib/chassis/chassis.hpp"
 #include "pros/misc.h"
+#include "pros/motors.hpp"
+#include "pros/rotation.h"
+#include "pros/rotation.hpp"
+#include <fstream>
 
 
-pros::Controller master(pros::E_CONTROLLER_MASTER);
+pros::Controller controller(pros::E_CONTROLLER_MASTER);
 
 // motor groups
-pros::MotorGroup left_motors({-12, -19, 20}, pros::MotorGearset::blue);   //motor group w/ backwards ports 12 & 19 (leftFront, leftBack) forwards port 20 (leftTop)
-pros::MotorGroup right_motors({9, 14, -10}, pros::MotorGearset::blue);  //motor group with forwards ports 9 & 14 (rightFront, rightBack) and backward port 10 (rightTop); all 600 rpm blue carts
-pros::MotorGroup intake_motors({-4, 15}, pros::MotorGearset::blue); //motor group with left (reversed) and right (forward) intake motors
+pros::MotorGroup left_motors({6, 16, 3}, pros::MotorGearset::blue);   //motor group w/ backwards ports 12 & 19 (leftFront, leftBack) forwards port 20 (leftTop)
+pros::MotorGroup right_motors({-11, -12, -7}, pros::MotorGearset::blue);  //motor group with forwards ports 9 & 14 (rightFront, rightBack) and backward port 10 (rightTop); all 600 rpm blue carts
+pros::MotorGroup intake_motors({20, 2}, pros::MotorGearset::blue); //motor group with left (reversed) and right (forward) intake motors
 pros::adi::DigitalOut clamp('H');
-pros::adi::DigitalOut intakeLift('G');
-pros::adi::DigitalOut doinker('F');
+pros::Motor intake(20, pros::MotorGearset::blue);
+pros::Motor hooks(2, pros::MotorGearset::blue);
+pros::Motor lbMotor(-17, pros::MotorGearset::green);
+pros::Rotation lbRotSensor(10);
+const int numStates = 3;
+int states[numStates] = {0, 3500, 13000}; // these are in centi-degrees, 1 degree is 100 centi-degrees
+int currentState = 0;
+int target = 0;
+
+void nextState() {
+	if (currentState == 0 && lbRotSensor.get_position() <= 1500 && lbRotSensor.get_position() >= -1500) {
+		lbRotSensor.set_position(0);
+	}
+
+    currentState += 1;
+    if (currentState == numStates) {
+        currentState = 0;
+    }
+    target = states[currentState];
+}
+
+void liftControl() {
+    double kp = 0.015;
+    double error = target - lbRotSensor.get_position();
+    double velocity = kp * error;
+    lbMotor.move(velocity);
+}
 
 //drivetrain configuration
 lemlib::Drivetrain drivetrain(&left_motors, // left motor group
@@ -87,6 +116,7 @@ lemlib::Chassis chassis(drivetrain, // drivetrain settings
 void initialize() {
     pros::lcd::initialize(); // initialize brain screen
     chassis.calibrate(); // calibrate sensors
+	lbRotSensor.set_position(0);
     // print position to brain screen
     pros::Task screen_task([&]() {
         while (true) {
@@ -94,10 +124,18 @@ void initialize() {
             pros::lcd::print(0, "X: %f", chassis.getPose().x); // x
             pros::lcd::print(1, "Y: %f", chassis.getPose().y); // y
             pros::lcd::print(2, "Theta: %f", chassis.getPose().theta); // heading
+			pros::lcd::print(3, "LB Theta: %ld", lbRotSensor.get_position()); // heading
             // delay to save resources
             pros::delay(20);
         }
     });
+
+	pros::Task liftControlTask([]{
+		while (true) {
+			liftControl();
+			pros::delay(10);
+		}
+	});
 }
 
 /**
@@ -153,44 +191,40 @@ void competition_initialize() {}
  * from where it left off.
  */
 
-// ALMOST NONE OF THESE ARE CORRECT SO FIX WHEN DOING MATCH AUTOS
-// 0 - turn test
-// 1 - drive test
-// 7 - blue negative
-// 3 - red positive (mogo rush) (no sig wp)
-// 4 - red negative
-// 10 - skills
-
-// Tested
-// 0 - turn test
-// 1 - drive test
-// 2 - bad blue neg
-// 3 - mid red pos
-// 4 - mid blue neg (tunable)
-// 5 - good clamp but bad everything else blue neg (tunable)
-// 6 - mid blue pos (not right?)
-// 7 - sophia blue neg bad
-// 8 - bad blue neg
-// 9 - safe blue pos mid
-// 10 - skills
-
 // Good/tunable match autos
-// 3 - red pos (nah)
-// 4 - red neg (perfect)
-// 5 - blue neg (perfect)
-// 6 - blue pos (nah)
-// 9 - safe blue pos (good)
-// 10 - safe red pos (good)
-// 11 - auto skills (good)
-int chosenAuton = 5;
+// 0 - turn test
+// 1 - drive test
+// 2 - red pos (nah)
+// 3 - red neg (perfect)
+// 4 - blue neg (perfect)
+// 5 - blue pos (nah)
+// 6 - safe blue pos (good)
+// 7 - safe red pos (good)
+// 8 - auto skills (good)
+// 9 - position track
+// 10 - run tracked prog
+int chosenAuton = 9;
+
+std::ofstream xPositions;
 
 void autonomous() {
     // set position to x:0, y:0, heading:0
     chassis.setPose(0, 0, 0);
-    // turn to face heading 90 with a very long timeout
-    //chassis.turnToHeading(90, 2000);
-	/*chassis.waitUntilDone();
-	chassis.cancelAllMotions();*/
+
+	// Make lists for the positions in tracking
+	std::vector<float> xPoses;
+	std::vector<float> yPoses;
+	std::vector<float> angles;
+
+	// Make file for things to be saved in
+	if (chosenAuton == 9) {
+        xPositions.open("/Users/jakepetty/Desktop/57249B/src/xPositions.txt");
+        // Check if the file opened successfully
+        if (!xPositions.is_open()) {
+            std::cout << "Error opening file!" << std::endl;
+            return;
+        }
+    }
 
 	switch(chosenAuton){
 		case 0:
@@ -204,38 +238,6 @@ void autonomous() {
 			chassis.moveToPoint(0, 0, 1000, {.forwards = false});
 			break;
 		case 2:
-			// Blue Negative
-			// Get mogo
-			clamp.set_value(true);
-			chassis.moveToPoint(5, -20, 1500, {.forwards = false});
-			chassis.waitUntilDone();
-			clamp.set_value(false);
-			pros::delay(300);
-
-			// Get first ring (not match load) (bottom of 2 ring stack)
-			intake_motors.move(127);
-			chassis.moveToPose(-10, -25, 270, 1500, {.minSpeed = 30}); //-12
-
-			// Get second ring (ring on bottom left of pile)
-			//chassis.moveToPose(-10, -40, 180, 1500); //40
-			chassis.moveToPoint(-17, -25, 1500, {.forwards = false}); //-15
-
-			// Get third ring (ring on bottom right of pile)
-			chassis.moveToPose(-20, -43, 180, 1500); //47
-
-			// Go back and get fourth ring
-			chassis.moveToPoint(-20, 0, 1500, {.forwards = false});
-			intakeLift.set_value(true);
-			chassis.moveToPose(25, 0, 90, 1500); //move backwards to prep for grabbing fourth ring
-			pros::delay(200);
-			intakeLift.set_value(false);
-			// Hit ladders
-			chassis.moveToPose(20, -20, 0, 1500);
-			//chassis.waitUntilDone();
-			intake_motors.move(0);
-            
-			break;
-		case 3:
 			// Red Positive
 			// Mogo Rush
 			clamp.set_value(true);
@@ -275,7 +277,7 @@ void autonomous() {
 			// chassis.waitUntilDone();
 			// intake_motors.move(0); 
 			break;
-		case 4:
+		case 3:
 		// red negative
 			clamp.set_value(true);
 			chassis.moveToPoint(-5, -22, 1500, {.forwards = false, .maxSpeed = 70});
@@ -309,7 +311,7 @@ void autonomous() {
 			chassis.waitUntilDone();
 			intake_motors.move(0);
 			break;
-		case 5:
+		case 4:
 		// blue negative
 			clamp.set_value(true);
 			chassis.moveToPoint(5, -22, 1500, {.forwards = false, .maxSpeed = 70});
@@ -343,7 +345,7 @@ void autonomous() {
 			chassis.waitUntilDone();
 			intake_motors.move(0);
 			break;
-		case 6:
+		case 5:
 			// blue Positive
 			// Mogo Rush
 			clamp.set_value(true);
@@ -385,94 +387,7 @@ void autonomous() {
 			chassis.waitUntilDone();
 			intake_motors.move(0); 
 			break;
-		case 7:
-			// Get mogo
-			clamp.set_value(true);
-			//chassis.moveToPoint(0, -22, 1500, {.forwards = false}); //y20
-			//chassis.waitUntilDone();
-			clamp.set_value(false);
-			//pros::delay(300);
-			// Get first ring (not match load) (bottom of 2 ring stack)
-			intake_motors.move(200);
-			chassis.moveToPose(0, -25, 270, 1500, {.minSpeed = 50}); //minsp50
-			//chassis.waitUntilDone();
-			//chassis.moveToPose(-20, -35, 180, 1500); //12 x -40
-
-			// Get second ring (ring on bottom left of pile)
-			//chassis.setPose(0,0,0);
-			chassis.moveToPoint(-23, -43, 1500); //x15 y might need to be 35
-			// Get third ring (ring on bottom right of pile
-
-			chassis.moveToPose(-20, -25, 180, 1500); //43y 40
-			chassis.moveToPose(-23, -43, 180, 1500); //43y 40
-
-			// Go back and get fourth ring
-			chassis.moveToPoint(-30, 5, 1500, {.forwards = false});
-
-
-			// intakeLift.set_value(true);
-			// chassis.moveToPose(25, 0, 90, 1500);
-			// pros::delay(300);
-			// intakeLift.set_value(false);
-			// // Hit ladder
-			// chassis.moveToPose(20, -20, 0, 1500);
-			// chassis.waitUntilDone();
-			break;
-        case 8: //blue neg
-            // chassis.setPose(0, 0, 0);
-            //grab mogo
-            clamp.set_value(true);
-			chassis.moveToPoint(0, -25, 1500, {.forwards = false});
-			chassis.waitUntilDone();
-			clamp.set_value(false);
-			pros::delay(200);
-            // chassis.moveToPoint(0, -25, 1500, {.forwards = false, .maxSpeed = 60}); 
-			// //pros::delay(300);
-            // clamp.set_value(false);
-            // //first ring
-            chassis.turnToHeading(270, 1500);
-            chassis.waitUntilDone();
-            chassis.setPose(0, 0, 0);
-            intake_motors.move(200);
-            //second ring
-            //chassis.turnToHeading(270, 1500);
-            chassis.moveToPoint(0, 25, 1500, {.forwards = true}); //24 but we move more so that it is in line with getting the second ring
-            intake_motors.move(0);
-
-            //sophia and jake code from case 2 
-            // Get third ring (ring on bottom right of pile)
-        
-            // chassis.setPose(0,0,0);
-            // intake_motors.move(127);
-            // chassis.moveToPoint(0, 20, 1500);//
-            // chassis.turnToHeading(20, 1500);
-            // chassis.moveToPoint(0, -15, 1500);
-            // intake_motors.move(0);
-            // chassis.setPose(0,0,0);
-            // chassis.turnToHeading(200, 1500);
-            // chassis.moveToPoint(0, 30, 1500);
-
-            // chassis.moveToPose(-20, -43, 180, 1500);
-			// // Go back and get fourth ring
-			// chassis.moveToPoint(-20, 0, 1500, {.forwards = false});
-			// intakeLift.set_value(true);
-			// chassis.moveToPose(25, 0, 90, 1500);
-			// pros::delay(300);
-			// intakeLift.set_value(false);
-			// // Hit ladder
-			// chassis.moveToPose(20, -20, 0, 1500);
-			// chassis.waitUntilDone();
-			// intake_motors.move(0);
-           
-            // chassis.turnToHeading(270, 1500);
-            // chassis.setPose(0,0,0);
-            // intake_motors.move(125);
-            // chassis.moveToPoint(0, 25, 1500);
-            // chassis.moveToPoint(0, -30, 1500);
-            // chassis.turnToHeading(30, 1500);
-            // chassis.moveToPoint(0, 30, 1500, {.maxSpeed = 60});
-            break;
-		case 9:
+		case 6:
 		// safe positive blue
 			clamp.set_value(true);
 			chassis.moveToPoint(-5, -22, 1500, {.forwards = false, .maxSpeed = 100});
@@ -493,7 +408,7 @@ void autonomous() {
 			chassis.waitUntilDone();
 			intake_motors.move(0);
 			break;
-		case 10:
+		case 7:
 		// safe positive red
 			clamp.set_value(true);
 			chassis.moveToPoint(5, -22, 1500, {.forwards = false, .maxSpeed = 100});
@@ -514,7 +429,7 @@ void autonomous() {
 			chassis.waitUntilDone();
 			intake_motors.move(0);
 			break;
-		case 11:
+		case 8:
 		// skills
 			// // Score preload on alliance stake (retarted version)
 			// intake_motors.move(127);
@@ -719,8 +634,42 @@ void autonomous() {
 			chassis.waitUntilDone();
 			intake_motors.move(0);
 			break;
+		case 9:
+		// Position tracking by manualy moving bot
+			while (true) {
+				xPoses.push_back(chassis.getPose().x);
+				yPoses.push_back(chassis.getPose().y);
+				angles.push_back(chassis.getPose().theta);
+				pros::delay(1000);
+			}
+
+			// Save arrays to files
+			if (xPositions.is_open()) {
+				// Write the contents of xPoses to the file
+				for (int i = 0; i < xPoses.size(); i++) {
+					xPositions << xPoses[i] << " ";  // Separate elements with a space
+				}
+				xPositions << std::endl;  // Add a newline at the end
+				xPositions.close();       // Close the file
+			} else {
+				std::cerr << "Unable to open file!" << std::endl;
+			}
+
+			std::cout << "File written successfully!" << std::endl;
+			
+			break;
+		case 10:
+		// Auto that moves from tracked positions ^
+			for (int i = 0; i <= 60; i++) {
+				// change so it takes from the created save file instead of the lists
+				chassis.moveToPose(xPoses[i], yPoses[i], angles[i], 1000);
+				pros::delay(1000);
+			}
+
+			break;
     }
 }
+
 
 /**
  * Runs the operator control code. This function will be started in its own task
@@ -735,9 +684,11 @@ void autonomous() {
  * operator control task will be stopped. Re-enabling the robot will restart the
  * task, not resume it from where it left off.
  */
-pros::Controller controller(pros::E_CONTROLLER_MASTER);
 
 void opcontrol() {
+	// set position to x:0, y:0, heading:0
+    chassis.setPose(0, 0, 0);
+
     // pistons
 	bool clampExtended = false;
   	bool doinkerExtended = false;
@@ -745,8 +696,8 @@ void opcontrol() {
 
     while (true) {
         // Exponential drive
-        int leftY = controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
-        int rightX = controller.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
+        int leftY = -controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
+        int rightX = -controller.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
 
 		double cubedLeftY = (leftY * leftY * leftY);
 		double cubedRightX = (rightX * rightX * rightX);
@@ -762,38 +713,32 @@ void opcontrol() {
 
 
 		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R1)) {
-			intake_motors.move(127);
+			intake.move(127);
+			hooks.move(127);
 		} else if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2)) {
-			intake_motors.move(-127);
+			intake.move(-127);
+			hooks.move(-127);
 		} else {
-			intake_motors.move(0);
+			intake.move(0);
+			hooks.move(0);
 		}
 
 		// Single button mogo clamp
-		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_L1)) {
+		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_A)) {
 			clampExtended = !clampExtended;
 			pros::delay(250);
 			clamp.set_value(clampExtended);
 		}
+		
 
-		// Single button doinker
-		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_L2)) {
-			doinkerExtended = !doinkerExtended;
-			pros::delay(250);
-			doinker.set_value(doinkerExtended);
-		}
-
-		// Single button intake lift (mostly just for testing)
-		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_DOWN)) {
-			intakeExtended = !intakeExtended;
-			pros::delay(250);
-			intakeLift.set_value(intakeExtended);
+		if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_L1)) {
+			nextState();
 		}
 
 		// Run auton skills
-		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_RIGHT)) {
-			autonomous();
-		}
+		// if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_RIGHT)) {
+		// 	autonomous();
+		// }
 		
 		
         // delay to save resources
