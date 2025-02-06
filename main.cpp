@@ -702,7 +702,7 @@ void autonomous() {
 
 			// Get last ring
 			chassis.turnToHeading(70, 750);
-			chassis.moveToPoint(65, 35, 1500);
+			chassis.moveToPoint(70, 35, 1500);
 			break;
     }
 }
