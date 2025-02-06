@@ -2,6 +2,7 @@
 #include "lemlib/api.hpp" // IWYU pragma: keep
 #include "lemlib/chassis/chassis.hpp"
 #include "pros/misc.h"
+#include "pros/motors.h"
 #include "pros/motors.hpp"
 #include "pros/rotation.h"
 #include "pros/rotation.hpp"
@@ -11,8 +12,8 @@
 pros::Controller controller(pros::E_CONTROLLER_MASTER);
 
 // motor groups
-pros::MotorGroup left_motors({6, 16, 3}, pros::MotorGearset::blue);   //motor group w/ backwards ports 12 & 19 (leftFront, leftBack) forwards port 20 (leftTop)
-pros::MotorGroup right_motors({-11, -12, -7}, pros::MotorGearset::blue);  //motor group with forwards ports 9 & 14 (rightFront, rightBack) and backward port 10 (rightTop); all 600 rpm blue carts
+pros::MotorGroup left_motors({-6, -16, -3}, pros::MotorGearset::blue);   //motor group w/ backwards ports 12 & 19 (leftFront, leftBack) forwards port 20 (leftTop)
+pros::MotorGroup right_motors({11, 12, 7}, pros::MotorGearset::blue);  //motor group with forwards ports 9 & 14 (rightFront, rightBack) and backward port 10 (rightTop); all 600 rpm blue carts
 pros::MotorGroup intake_motors({20, 2}, pros::MotorGearset::blue); //motor group with left (reversed) and right (forward) intake motors
 pros::adi::DigitalOut clamp('H');
 pros::Motor intake(20, pros::MotorGearset::blue);
@@ -20,7 +21,7 @@ pros::Motor hooks(2, pros::MotorGearset::blue);
 pros::Motor lbMotor(-17, pros::MotorGearset::green);
 pros::Rotation lbRotSensor(10);
 const int numStates = 3;
-int states[numStates] = {0, 3500, 13000}; // these are in centi-degrees, 1 degree is 100 centi-degrees
+int states[numStates] = {0, 2600, 13000}; // these are in centi-degrees, 1 degree is 100 centi-degrees
 int currentState = 0;
 int target = 0;
 
@@ -46,27 +47,27 @@ void liftControl() {
 //drivetrain configuration
 lemlib::Drivetrain drivetrain(&left_motors, // left motor group
                               &right_motors, // right motor group
-                              13.5, // 13.5 inch track width (dist. from middle of the wheel to the other side's mid wheel.)
+                              11.5, // 11.5 inch track width (dist. from middle of the wheel to the other side's mid wheel.)
                               lemlib::Omniwheel::NEW_325, // using new 3.25" omnis
                               450, // drivetrain rpm is 450
-                              2 // horizontal drift is 2 (for now)
+                              0 // horizontal drift is 2 (for now)
 );
 
 
-// creates an imu on port 17 -- inertial sensor (imu = inertial measurement unit)
-pros::Imu imu(17);
+// creates an imu on port 14 -- inertial sensor (imu = inertial measurement unit)
+pros::Imu imu(15);
 
-// create a v5 rotation sensor on port 16 (verticle) and 7 (horizontile)
-pros::Rotation vertical_encoder(1);
-pros::Rotation horizontile_encoder(7);
+// create a v5 rotation sensor on port 16 (vertical) and 7 (horizontal)
+pros::Rotation vertical_encoder(-9);
+//pros::Rotation horizontile_encoder(7);
 
 //vertical tracking wheel --the rotational sensor
 lemlib::TrackingWheel vertical_tracking_wheel(&vertical_encoder, lemlib::Omniwheel::NEW_275, .5);
-lemlib::TrackingWheel horizontile_tracking_wheel(&horizontile_encoder, lemlib::Omniwheel::NEW_275, -.25);
+//lemlib::TrackingWheel horizontile_tracking_wheel(&horizontile_encoder, lemlib::Omniwheel::NEW_275, -.25);
 
-lemlib::OdomSensors sensors(&vertical_tracking_wheel, // vertical tracking wheel 1
+lemlib::OdomSensors sensors(&vertical_tracking_wheel,//&vertical_tracking_wheel, // vertical tracking wheel 1
                             nullptr, // vertical tracking wheel 2, set to nullptr bc we don't have one
-                            &horizontile_tracking_wheel,	// horizontal tracking wheel 1
+                            nullptr,//&horizontile_tracking_wheel,	// horizontal tracking wheel 1
                             nullptr, // horizontal tracking wheel 2, set to nullptr bc we don't have a second one
                             &imu // inertial sensor
 );
@@ -74,25 +75,25 @@ lemlib::OdomSensors sensors(&vertical_tracking_wheel, // vertical tracking wheel
 
 // PID will be done later
 // lateral PID controller
-lemlib::ControllerSettings lateral_controller(10, // proportional gain (kP)
+lemlib::ControllerSettings lateral_controller(8, // proportional gain (kP)
                                               0, // integral gain (kI)
-                                              85, // derivative gain (kD)
+                                              20, // derivative gain (kD)
                                               3, // anti windup
                                               1, // small error range, in inches
                                               100, // small error range timeout, in milliseconds
                                               3, // large error range, in inches
                                               500, // large error range timeout, in milliseconds
-                                              20 // maximum acceleration (slew)
+                                              10
 );
 
 // angular PID controller
-lemlib::ControllerSettings angular_controller(4, // proportional gain (kP)
+lemlib::ControllerSettings angular_controller(2, // proportional gain (kP)
                                               0, // integral gain (kI)
-                                              33, // derivative gain (kD)
+                                              14.7, // derivative gain (kD)
                                               0, // anti windup
-                                              0, // small error range, in degrees
+                                              0, // small error range, in inches
                                               0, // small error range timeout, in milliseconds
-                                              0, // large error range, in degrees
+                                              0, // large error range, in inches
                                               0, // large error range timeout, in milliseconds
                                               0 // maximum acceleration (slew)
 );
@@ -201,8 +202,7 @@ void competition_initialize() {}
 // 6 - safe blue pos (good)
 // 7 - safe red pos (good)
 // 8 - auto skills (good)
-// 9 - position track
-// 10 - run tracked prog
+// 9 - solo sig awp
 int chosenAuton = 9;
 
 std::ofstream xPositions;
@@ -211,31 +211,17 @@ void autonomous() {
     // set position to x:0, y:0, heading:0
     chassis.setPose(0, 0, 0);
 
-	// Make lists for the positions in tracking
-	std::vector<float> xPoses;
-	std::vector<float> yPoses;
-	std::vector<float> angles;
-
-	// Make file for things to be saved in
-	if (chosenAuton == 9) {
-        xPositions.open("/Users/jakepetty/Desktop/57249B/src/xPositions.txt");
-        // Check if the file opened successfully
-        if (!xPositions.is_open()) {
-            std::cout << "Error opening file!" << std::endl;
-            return;
-        }
-    }
-
 	switch(chosenAuton){
 		case 0:
 			// Turn Test
-			chassis.turnToHeading(90, 5000);
-			chassis.turnToHeading(0, 5000);
+			chassis.turnToHeading(90, 1000);
+			//chassis.turnToHeading(0, 5000);
 			break;
 		case 1:
 			// Drive Test
 			chassis.moveToPoint(0, 24, 1000);
-			chassis.moveToPoint(0, 0, 1000, {.forwards = false});
+			//chassis.moveToPoint(0, 0, 1000, {.forwards = false});
+			chassis.setBrakeMode(pros::E_MOTOR_BRAKE_COAST);
 			break;
 		case 2:
 			// Red Positive
@@ -279,33 +265,49 @@ void autonomous() {
 			break;
 		case 3:
 		// red negative
-			clamp.set_value(true);
-			chassis.moveToPoint(-5, -22, 1500, {.forwards = false, .maxSpeed = 70});
-			chassis.waitUntilDone();
-			clamp.set_value(false);
-			pros::delay(300);
-			// rush ring stack from left to right
-			chassis.turnToHeading(-180, 750);
-			chassis.waitUntilDone();
+			chassis.setPose(0, 0, 121);
+
+			// Score wall stake w/ LB
+			target = 2500;
+			pros::delay(100);
 			intake_motors.move(127);
-			chassis.moveToPose(15, -44, -270, 1500);
+			pros::delay(800);
+			intake_motors.move(-70);
+			pros::delay(80);
+			intake_motors.move(127);
+			pros::delay(200);
+			intake_motors.move(-70);
+			pros::delay(80);
+			intake_motors.move(127);
+			pros::delay(200);
+			intake_motors.move(-10);
+			pros::delay(50);
+			target = 20500;
+			pros::delay(100);
+			intake_motors.move(0);
+			pros::delay(500);
+
+			// Move to first mogo
+			left_motors.move(-127);
+			right_motors.move(-127);
+			pros::delay(200);
+			left_motors.move(0);
+			right_motors.move(0);
+			clamp.set_value(false);
+			chassis.moveToPoint(-9, 28, 1500, {.forwards = false, .maxSpeed = 70});
+			target = 0;
+			chassis.waitUntilDone();
 			pros::delay(300);
-			chassis.moveToPoint(27, -44, 1500, {.maxSpeed = 80});
-			// get 4th ring  (bottom of mini stack)
-			chassis.moveToPoint(15, -30, 1500);
-			// GET OUT! to red ring
-			chassis.moveToPoint(0, -8, 1500, {.maxSpeed = 100});
-			pros::delay(1200);
-			// // get 5th ring (one on top of opp ring)
-			// intakeLift.set_value(true);
-			// chassis.moveToPose(-37, -5, -90, 1500);
-			// chassis.waitUntilDone();
-			// pros::delay(1000);
-			// // touch ladder
-			// chassis.turnToHeading(-180, 1500);
-			// intakeLift.set_value(false);
-			// chassis.waitUntilDone();
-			// chassis.moveToPoint(-30, -20, 1500);
+			clamp.set_value(true);
+
+			// Set up for ring stack
+			chassis.turnToHeading(0, 750);
+			chassis.moveToPoint(-9, 50, 1500);
+			chassis.waitUntilDone();
+
+			// Sweep ring stack
+			intake_motors.move(127);
+			chassis.moveToPose(-50, 60, 270, 1500);
 
 			// finish
 			chassis.waitUntilDone();
@@ -635,37 +637,72 @@ void autonomous() {
 			intake_motors.move(0);
 			break;
 		case 9:
-		// Position tracking by manualy moving bot
-			while (true) {
-				xPoses.push_back(chassis.getPose().x);
-				yPoses.push_back(chassis.getPose().y);
-				angles.push_back(chassis.getPose().theta);
-				pros::delay(1000);
-			}
+		// solo sig awp
+			chassis.setPose(0, 0, 121);
 
-			// Save arrays to files
-			if (xPositions.is_open()) {
-				// Write the contents of xPoses to the file
-				for (int i = 0; i < xPoses.size(); i++) {
-					xPositions << xPoses[i] << " ";  // Separate elements with a space
-				}
-				xPositions << std::endl;  // Add a newline at the end
-				xPositions.close();       // Close the file
-			} else {
-				std::cerr << "Unable to open file!" << std::endl;
-			}
+			// Score wall stake w/ LB
+			target = 2500;
+			pros::delay(100);
+			intake_motors.move(127);
+			pros::delay(800);
+			intake_motors.move(-70);
+			pros::delay(80);
+			intake_motors.move(127);
+			pros::delay(200);
+			intake_motors.move(-70);
+			pros::delay(80);
+			intake_motors.move(127);
+			pros::delay(200);
+			intake_motors.move(-10);
+			pros::delay(50);
+			target = 20500;
+			pros::delay(100);
+			intake_motors.move(0);
+			pros::delay(500);
 
-			std::cout << "File written successfully!" << std::endl;
-			
-			break;
-		case 10:
-		// Auto that moves from tracked positions ^
-			for (int i = 0; i <= 60; i++) {
-				// change so it takes from the created save file instead of the lists
-				chassis.moveToPose(xPoses[i], yPoses[i], angles[i], 1000);
-				pros::delay(1000);
-			}
+			// Move to first mogo
+			left_motors.move(-127);
+			right_motors.move(-127);
+			pros::delay(200);
+			left_motors.move(0);
+			right_motors.move(0);
+			clamp.set_value(false);
+			chassis.moveToPoint(-6, 30, 1500, {.forwards = false, .maxSpeed = 70});
+			target = 0;
+			chassis.waitUntilDone();
+			pros::delay(300);
+			clamp.set_value(true);
 
+			// Get ring + drop mogo
+			intake_motors.move(127);
+			chassis.turnToHeading(300, 750);
+			chassis.moveToPoint(-25, 35, 1500);
+			chassis.waitUntilDone();
+			pros::delay(1000);
+			clamp.set_value(false);
+
+			// Get next ring (Stacked in middle) (load it into bot)
+			chassis.turnToHeading(120, 750);
+			chassis.waitUntilDone();
+			chassis.moveToPoint(0, 15, 1500);
+			chassis.moveToPoint(15, 15, 1500);
+			chassis.moveToPoint(30, 15, 1500);
+			chassis.waitUntilDone();
+			pros::delay(100);
+			intake_motors.move(0);
+
+			// Get last mogo and score loaded ring
+			chassis.turnToHeading(210, 750);
+			chassis.moveToPoint(41, 32, 1500, {.forwards = false});
+			chassis.waitUntilDone();
+			pros::delay(300);
+			clamp.set_value(true);
+			pros::delay(200);
+			intake_motors.move(127);
+
+			// Get last ring
+			chassis.turnToHeading(70, 750);
+			chassis.moveToPoint(65, 35, 1500);
 			break;
     }
 }
@@ -696,14 +733,14 @@ void opcontrol() {
 
     while (true) {
         // Exponential drive
-        int leftY = -controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
-        int rightX = -controller.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
+        int leftY = controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
+        int rightX = controller.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
 
 		double cubedLeftY = (leftY * leftY * leftY);
 		double cubedRightX = (rightX * rightX * rightX);
 
-		double expY = (cubedLeftY/10000);
-		double expX = (cubedRightX/10000);
+		double expY = (cubedLeftY/20000);
+		double expX = (cubedRightX/20000);
 
 		double expL = (leftY + rightX);
 		double expR = (leftY - rightX);
@@ -724,7 +761,7 @@ void opcontrol() {
 		}
 
 		// Single button mogo clamp
-		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_A)) {
+		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_L2)) {
 			clampExtended = !clampExtended;
 			pros::delay(250);
 			clamp.set_value(clampExtended);
