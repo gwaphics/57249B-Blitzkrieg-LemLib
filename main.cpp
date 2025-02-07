@@ -21,7 +21,7 @@ pros::Motor hooks(2, pros::MotorGearset::blue);
 pros::Motor lbMotor(-17, pros::MotorGearset::green);
 pros::Rotation lbRotSensor(10);
 const int numStates = 3;
-int states[numStates] = {0, 2600, 13000}; // these are in centi-degrees, 1 degree is 100 centi-degrees
+int states[numStates] = {0, 2600, 16000}; // these are in centi-degrees, 1 degree is 100 centi-degrees
 int currentState = 0;
 int target = 0;
 
@@ -219,9 +219,9 @@ void autonomous() {
 			break;
 		case 1:
 			// Drive Test
-			chassis.moveToPoint(0, 24, 1000);
+			chassis.moveToPoint(0, -10, 1000, {.forwards = false});
+			//chassis.moveToPoint(0, 24, 1000);
 			//chassis.moveToPoint(0, 0, 1000, {.forwards = false});
-			chassis.setBrakeMode(pros::E_MOTOR_BRAKE_COAST);
 			break;
 		case 2:
 			// Red Positive
@@ -658,7 +658,7 @@ void autonomous() {
 			target = 20500;
 			pros::delay(100);
 			intake_motors.move(0);
-			pros::delay(500);
+			pros::delay(400);
 
 			// Move to first mogo
 			left_motors.move(-127);
@@ -667,33 +667,33 @@ void autonomous() {
 			left_motors.move(0);
 			right_motors.move(0);
 			clamp.set_value(false);
-			chassis.moveToPoint(-6, 30, 1500, {.forwards = false, .maxSpeed = 70});
+			chassis.moveToPoint(-7, 32, 1500, {.forwards = false, .maxSpeed = 70});
 			target = 0;
 			chassis.waitUntilDone();
 			pros::delay(300);
 			clamp.set_value(true);
 
-			// Get ring + drop mogo
+			// Get ring
 			intake_motors.move(127);
 			chassis.turnToHeading(300, 750);
 			chassis.moveToPoint(-25, 35, 1500);
 			chassis.waitUntilDone();
-			pros::delay(1000);
-			clamp.set_value(false);
+			pros::delay(200);
 
 			// Get next ring (Stacked in middle) (load it into bot)
 			chassis.turnToHeading(120, 750);
 			chassis.waitUntilDone();
-			chassis.moveToPoint(0, 15, 1500);
-			chassis.moveToPoint(15, 15, 1500);
-			chassis.moveToPoint(30, 15, 1500);
+			clamp.set_value(false);
+			chassis.moveToPoint(0, 15, 1500, {.maxSpeed = 80});
+			chassis.moveToPoint(15, 15, 1500, {.maxSpeed = 80});
+			chassis.moveToPoint(30, 15, 1500, {.maxSpeed = 80});
 			chassis.waitUntilDone();
 			pros::delay(100);
 			intake_motors.move(0);
 
 			// Get last mogo and score loaded ring
 			chassis.turnToHeading(210, 750);
-			chassis.moveToPoint(41, 32, 1500, {.forwards = false});
+			chassis.moveToPoint(35, 32, 1500, {.forwards = false});
 			chassis.waitUntilDone();
 			pros::delay(300);
 			clamp.set_value(true);
@@ -702,7 +702,15 @@ void autonomous() {
 
 			// Get last ring
 			chassis.turnToHeading(70, 750);
-			chassis.moveToPoint(70, 35, 1500);
+			chassis.moveToPoint(55, 35, 1500);
+			chassis.waitUntilDone();
+			pros::delay(200);
+			chassis.moveToPoint(45, 35, 1500, {.forwards = false});
+
+
+			// Hit ladder
+			chassis.turnToHeading(270, 750, {.maxSpeed = 70});
+			chassis.moveToPoint(20, 37, 1500);
 			break;
     }
 }
