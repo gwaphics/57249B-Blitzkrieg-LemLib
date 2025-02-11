@@ -203,7 +203,8 @@ void competition_initialize() {}
 // 7 - safe red pos (good)
 // 8 - auto skills (good)
 // 9 - solo sig awp
-int chosenAuton = 9;
+// 10 - pos for elims (bristol)
+int chosenAuton = 10;
 
 std::ofstream xPositions;
 
@@ -670,47 +671,117 @@ void autonomous() {
 			chassis.moveToPoint(-7, 32, 1500, {.forwards = false, .maxSpeed = 70});
 			target = 0;
 			chassis.waitUntilDone();
-			pros::delay(300);
+			pros::delay(200);
 			clamp.set_value(true);
 
 			// Get ring
 			intake_motors.move(127);
 			chassis.turnToHeading(300, 750);
-			chassis.moveToPoint(-25, 35, 1500);
+			chassis.moveToPoint(-27, 35, 1500); // back to x=25 for full thing
 			chassis.waitUntilDone();
-			pros::delay(200);
+			pros::delay(1000); // change to 400ms but 1000ms for kirk
 
-			// Get next ring (Stacked in middle) (load it into bot)
-			chassis.turnToHeading(120, 750);
+			chassis.turnToHeading(90, 750);
 			chassis.waitUntilDone();
-			clamp.set_value(false);
-			chassis.moveToPoint(0, 15, 1500, {.maxSpeed = 80});
-			chassis.moveToPoint(15, 15, 1500, {.maxSpeed = 80});
-			chassis.moveToPoint(30, 15, 1500, {.maxSpeed = 80});
-			chassis.waitUntilDone();
+			chassis.moveToPoint(10, 37, 1500);
+
+			// // Get next ring (Stacked in middle) (load it into bot)
+			// chassis.turnToHeading(120, 750);
+			// chassis.waitUntilDone();
+			// clamp.set_value(false);
+			// chassis.moveToPoint(0, 15, 1500, {.maxSpeed = 80});
+			// chassis.moveToPoint(15, 15, 1500, {.maxSpeed = 80});
+			// chassis.moveToPoint(30, 15, 1500, {.maxSpeed = 80});
+			// chassis.waitUntilDone();
+			// pros::delay(100);
+			// intake_motors.move(0);
+
+			// // Get last mogo and score loaded ring
+			// chassis.turnToHeading(210, 750);
+			// chassis.moveToPoint(35, 32, 1500, {.forwards = false});
+			// chassis.waitUntilDone();
+			// pros::delay(300);
+			// clamp.set_value(true);
+			// pros::delay(300); // make 200 or 300 if no touch ladder
+			// intake_motors.move(127);
+
+			// // Get last ring
+			// chassis.turnToHeading(70, 750);
+			// chassis.moveToPoint(55, 35, 1500);
+			// chassis.waitUntilDone();
+			// pros::delay(200);
+			// chassis.moveToPoint(45, 35, 1500, {.forwards = false});
+
+
+			// // Hit ladder
+			// chassis.turnToHeading(270, 750, {.maxSpeed = 70});
+			// chassis.moveToPoint(20, 37, 1500);
+			break;
+		case 10:
+		// for wiggle
+			chassis.setPose(0, 0, -121);
+
+			// Score wall stake w/ LB
+			target = 2500;
+			pros::delay(100);
+			intake_motors.move(127);
+			pros::delay(800);
+			intake_motors.move(-70);
+			pros::delay(80);
+			intake_motors.move(127);
+			pros::delay(200);
+			intake_motors.move(-70);
+			pros::delay(80);
+			intake_motors.move(127);
+			pros::delay(200);
+			intake_motors.move(-10);
+			pros::delay(50);
+			target = 20500;
 			pros::delay(100);
 			intake_motors.move(0);
+			pros::delay(400);
 
-			// Get last mogo and score loaded ring
-			chassis.turnToHeading(210, 750);
-			chassis.moveToPoint(35, 32, 1500, {.forwards = false});
+			// Move to first mogo
+			left_motors.move(-127);
+			right_motors.move(-127);
+			pros::delay(200);
+			left_motors.move(0);
+			right_motors.move(0);
+			clamp.set_value(false);
+			chassis.moveToPoint(7, 32, 1500, {.forwards = false, .maxSpeed = 70});
+			target = 0;
 			chassis.waitUntilDone();
-			pros::delay(300);
+			pros::delay(200);
 			clamp.set_value(true);
-			pros::delay(200);
-			intake_motors.move(127);
 
-			// Get last ring
-			chassis.turnToHeading(70, 750);
-			chassis.moveToPoint(55, 35, 1500);
+			// Get ring
+			intake_motors.move(127);
+			chassis.turnToHeading(-300, 750);
+			chassis.moveToPoint(29, 32, 1500);
+			chassis.waitUntilDone();
+			pros::delay(500);
+
+			// Drop mogo near corner
+			chassis.turnToHeading(-30, 750);
+			chassis.moveToPoint(40, 5, 1500, {.forwards = false});
+			chassis.waitUntilDone();
+			clamp.set_value(false);
+			intake_motors.move(0);
+			chassis.moveToPoint(40, 15, 1500);
+			chassis.waitUntilDone();
+
+			// Almost goal rush
+			chassis.turnToHeading(160, 750);
+			chassis.waitUntilDone();
+			chassis.moveToPoint(29, 35, 1500, {.forwards = false, .maxSpeed = 70});
+			chassis.waitUntilDone();
+			chassis.turnToHeading(180, 750);
+			chassis.waitUntilDone();
+			chassis.moveToPoint(29, 47, 1500, {.forwards = false, .maxSpeed = 70});
 			chassis.waitUntilDone();
 			pros::delay(200);
-			chassis.moveToPoint(45, 35, 1500, {.forwards = false});
+			clamp.set_value(true);
 
-
-			// Hit ladder
-			chassis.turnToHeading(270, 750, {.maxSpeed = 70});
-			chassis.moveToPoint(20, 37, 1500);
 			break;
     }
 }
