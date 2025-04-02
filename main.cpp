@@ -14,42 +14,14 @@ pros::Controller controller(pros::E_CONTROLLER_MASTER);
 // motor groups
 pros::MotorGroup left_motors({-6, -16, -3}, pros::MotorGearset::blue);   //motor group w/ backwards ports 12 & 19 (leftFront, leftBack) forwards port 20 (leftTop)
 pros::MotorGroup right_motors({11, 12, 7}, pros::MotorGearset::blue);  //motor group with forwards ports 9 & 14 (rightFront, rightBack) and backward port 10 (rightTop); all 600 rpm blue carts
-pros::MotorGroup intake_motors({20, 2}, pros::MotorGearset::blue); //motor group with left (reversed) and right (forward) intake motors
+pros::MotorGroup intake_motors({20, 1}, pros::MotorGearset::blue); //motor group with left (reversed) and right (forward) intake motors
 pros::adi::DigitalOut clamp('H');
 pros::adi::DigitalOut doinker('A');
 pros::Motor intake(20, pros::MotorGearset::blue);
-pros::Motor hooks(2, pros::MotorGearset::blue);
-pros::Motor lbMotor(-18, pros::MotorGearset::green);
+pros::Motor hooks(1, pros::MotorGearset::blue);
+pros::MotorGroup lbMotors({18, -14}, pros::MotorGearset::green);
 pros::Rotation lbRotSensor(10);
-pros::Optical colorSortSensor(14);
-const int numStates = 3;
-int states[numStates] = {0, 2300, 17000}; // these are in centi-degrees, 1 degree is 100 centi-degrees
-int currentState = 0;
-int target = 0;
-
-void nextState() {
-    currentState += 1;
-    if (currentState == numStates) {
-        currentState = 0;
-    }
-	if (currentState == 2) {
-		hooks.move(-127);
-		pros::delay(100);
-		hooks.move(0);
-	}
-
-    target = states[currentState];
-}
-
-void liftControl() {
-    double kp = 0.015;
-    double error = target - lbRotSensor.get_position();
-    double velocity = kp * error;
-    lbMotor.move(velocity);
-}
-
-bool colorIsCorrect = true;
-bool red = false;
+pros::Optical colorSortSensor(21);
 
 //drivetrain configuration
 lemlib::Drivetrain drivetrain(&left_motors, // left motor group
@@ -119,23 +91,87 @@ lemlib::Chassis chassis(drivetrain, // drivetrain settings
 						&steer_curve //exp drive curve
 );
 
+bool colorIsCorrect = true;
+bool red = true;
+bool intakeSpin = false;
+bool firstStageOnly = false;
+bool reverse = false;
+bool ringFound = false;
+bool skills = false;
+
 void colorSorting() {
-	if (!red) {
-		if ((colorSortSensor.get_hue() > 300 || colorSortSensor.get_hue() < 90) && hooks.get_target_velocity() > 0) {
-			float x = (hooks.get_actual_velocity()/hooks.get_target_velocity()) * 20;
-			pros::delay((90 - x)); // first num is 75 + value that hooks velocity ratio is being multiplied by
-			colorIsCorrect = false;
-			pros::delay(150);
-			colorIsCorrect = true;
+	if (intakeSpin) {
+		if (!skills) {
+			if ((colorSortSensor.get_hue() > 300 || colorSortSensor.get_hue() < 50) && hooks.get_target_velocity() > 0 && red == false && ringFound == false) {
+				ringFound = true;
+				pros::delay(180);
+				intake_motors.move(0);
+				pros::delay(250);
+				ringFound = false;
+				intake_motors.move(127);
+			} else if (red == false) {
+				intake_motors.move(127);
+			} else if (!(colorSortSensor.get_hue() > 300 || colorSortSensor.get_hue() < 80) && !(colorSortSensor.get_hue() >= 80 && colorSortSensor.get_hue() < 160) && hooks.get_target_velocity() > 0 && red == true && ringFound == false) {
+				ringFound = true;
+				pros::delay(180);
+				intake_motors.move(0);
+				pros::delay(250);
+				ringFound = false;
+				intake_motors.move(127);
+			} else if (red == true) {
+				intake_motors.move(127);
+			}
+		} else {
+			intake_motors.move(127);
 		}
 	} else {
-		if (!(colorSortSensor.get_hue() > 300 || colorSortSensor.get_hue() < 90) && !(colorSortSensor.get_hue() > 80 && colorSortSensor.get_hue() < 150) && hooks.get_target_velocity() > 0) {
-			float x = (hooks.get_actual_velocity()/hooks.get_target_velocity()) * 20;
-			pros::delay((90 - x)); // first num is 75 + value that hooks velocity ratio is being multiplied by
-			colorIsCorrect = false;
-			pros::delay(500);
-			colorIsCorrect = true;
+		if (firstStageOnly) {
+			intake.move(127);
+			hooks.move(0);
+		} else if (reverse) {
+			intake_motors.move(-127);
+		} else {
+			intake_motors.move(0);
 		}
+		
+	}
+}
+
+const int numStates = 3;
+int states[numStates] = {0, 2250, 13000}; // these are in centi-degrees, 1 degree is 100 centi-degrees
+int currentState = 0;
+int target = 0;
+
+void nextState() {
+    currentState += 1;
+    if (currentState == numStates) {
+        currentState = 0;
+    }
+	if (currentState == 2) {
+		reverse = true;
+		intakeSpin = false;
+		pros::delay(100);
+		reverse = false;
+		intakeSpin = true;
+	}
+
+    target = states[currentState];
+}
+
+double kp = 0.015;
+void liftControl() {
+	if (currentState == 1 || currentState == 0) {
+		kp = 0.015;
+	} else {
+		kp = 0.010;
+	}
+
+    double error = target - lbRotSensor.get_position();
+    double velocity = kp * error;
+    lbMotors.move(velocity);
+
+	if (currentState == 0 && (error < 400 && error > -400)) {
+		lbRotSensor.set_position(0);
 	}
 }
 
@@ -175,6 +211,12 @@ void initialize() {
 	pros::Task liftControlTask([]{
 		while (true) {
 			liftControl();
+			pros::delay(10);
+		}
+	});
+
+	pros::Task colorSortTask([] {
+		while (true) {
 			colorSorting();
 			pros::delay(10);
 		}
@@ -260,8 +302,8 @@ void competition_initialize() {}
 
 // 0 - turn test
 // 1 - drive test
-// 2 - red sig sawp
-// 3 - blue sig sawp
+// 2 - red neg sig sawp
+// 3 - blue neg sig sawp
 // 4 - red pos goal rush
 // 5 - blue pos goal rush
 // 6 - red pos safe || blue neg safe
@@ -270,7 +312,7 @@ void competition_initialize() {}
 // 9 - blue neg ring sweep
 // 10 - skills (brennens field)
 // 11 - skills (aneeks field)
-int chosenAuton = 1;
+int chosenAuton = 11;
 
 void autonomous() {
     // set position to x:0, y:0, heading:0
@@ -287,18 +329,14 @@ void autonomous() {
 			// chassis.setPose(0, 0, 0);
 			//clamp.set_value(false);
 			red = true;
-			if (colorIsCorrect) {
-				intake_motors.move(127);
-			} else {
-				intake_motors.move(0);
-			}
+			intakeSpin = true;
 			//clamp.set_value(true);
 			// chassis.moveToPoint(0, 40, 10000, {.maxSpeed = 50});
 			//chassis.moveToPoint(0, 24, 1000);
 			//chassis.moveToPoint(0, 0, 1000, {.forwards = false});
 			break;
 		case 2:
-		// red sig sawp
+		// red neg sig sawp
 			// set up
 			chassis.setPose(0, 0, 110);
 			clamp.set_value(false);
@@ -314,10 +352,10 @@ void autonomous() {
 			chassis.turnToHeading(350, 750);
 			chassis.waitUntilDone();
 			doinker.set_value(true);
-			intake.move(127);
+			firstStageOnly = true;
 			chassis.turnToHeading(330, 500);
-			chassis.moveToPoint(-13, 25, 1000);
-			chassis.moveToPoint(-17, 46, 1000);
+			chassis.moveToPoint(-12.5, 25, 1000);
+			chassis.moveToPoint(-16, 45, 1000);
 			chassis.waitUntilDone();
 
 			// get first mogo
@@ -326,7 +364,8 @@ void autonomous() {
 			pros::delay(200);
 			clamp.set_value(true);
 			pros::delay(100);
-			intake_motors.move(127);
+			intakeSpin = true;
+			firstStageOnly = false;
 
 			// get next ring
 			doinker.set_value(false);
@@ -334,13 +373,107 @@ void autonomous() {
 
 			// get ring on top of opp ring in middle
 			chassis.turnToHeading(135, 500);
-			chassis.moveToPoint(0, 5, 1000);
+			chassis.moveToPoint(-3, 6, 1000);
 			chassis.turnToHeading(90, 500);
-			chassis.moveToPoint(25, 3, 1000, {.maxSpeed = 70});
-			
+			chassis.moveToPoint(25, 0, 1000, {.maxSpeed = 70});
+			chassis.waitUntilDone();
+
+			// // get second mogo
+			// pros::delay(1200);
+			// clamp.set_value(false);
+			// intakeSpin = false;
+			// firstStageOnly = true;
+			// chassis.turnToHeading(215, 500);
+			// chassis.waitUntilDone();
+			// chassis.moveToPoint(37, 21, 1000, {.forwards = false, .maxSpeed = 70});
+			// chassis.waitUntilDone();
+			// pros::delay(200);
+			// clamp.set_value(true);
+			// pros::delay(100);
+
+			// // get last ring
+			// chassis.turnToHeading(90, 500);
+			// chassis.waitUntilDone();
+			// intakeSpin = true;
+			// chassis.moveToPoint(57, 20, 1000);
+			// chassis.waitUntilDone();
+			// pros::delay(500);
+
+			// // touch ladder
+			// chassis.turnToHeading(270, 500);
+			// target = 13000;
+			// chassis.moveToPoint(0, 25, 10000, {.maxSpeed = 50});
+
 			break;
 		case 3:
-		// blue sig sawp
+		// blue neg sig sawp
+			// set up
+			chassis.setPose(0, 0, -110);
+			clamp.set_value(false);
+			red = false;
+
+			// score preload on alliance stake
+			target = 19500;
+			pros::delay(500);
+			target = 0;
+
+			// stack rush + grab one ring out of it
+			chassis.moveToPoint(14, 5, 500, {.forwards = false}); // x = 10 y = 5
+			chassis.turnToHeading(-350, 750);
+			chassis.waitUntilDone();
+			doinker.set_value(true);
+			firstStageOnly = true;
+			chassis.turnToHeading(-330, 500);
+			chassis.moveToPoint(15.6, 25, 1000);
+			chassis.moveToPoint(21, 44, 1000);
+			chassis.waitUntilDone();
+
+			// get first mogo
+			chassis.moveToPoint(7, 33, 1000, {.forwards = false, .maxSpeed = 70});
+			chassis.waitUntilDone();
+			pros::delay(200);
+			clamp.set_value(true);
+			pros::delay(100);
+			intakeSpin = true;
+			firstStageOnly = false;
+
+			// get next ring
+			doinker.set_value(false);
+			chassis.moveToPoint(27, 32, 1000);
+
+			// get ring on top of opp ring in middle
+			chassis.turnToHeading(-135, 500);
+			chassis.moveToPoint(7, 6, 1000);
+			chassis.turnToHeading(-90, 500);
+			chassis.moveToPoint(-21, 0, 1000, {.maxSpeed = 70});
+			chassis.waitUntilDone();
+
+			// // get second mogo
+			// pros::delay(1000);
+			// intakeSpin = false;
+			// firstStageOnly = true;
+			// clamp.set_value(false);
+			// chassis.turnToHeading(-215, 500);
+			// chassis.waitUntilDone();
+			// chassis.moveToPoint(-36, 21, 1000, {.forwards = false, .maxSpeed = 70});
+			// chassis.waitUntilDone();
+			// pros::delay(200);
+			// clamp.set_value(true);
+			// pros::delay(100);
+
+			// // get last ring
+			// chassis.turnToHeading(-90, 500);
+			// chassis.waitUntilDone();
+			// firstStageOnly = false;
+			// intakeSpin = true;
+			// chassis.moveToPoint(-52, 16, 1000);
+			// chassis.waitUntilDone();
+			// pros::delay(500);
+
+			// // touch ladder
+			// chassis.turnToHeading(-270, 500);
+			// target = 16000;
+			// chassis.moveToPoint(-5, 25, 10000, {.maxSpeed = 50});
 
 			break;
 		case 4:
@@ -352,11 +485,79 @@ void autonomous() {
 
 			break;
 		case 6:
-		//
+		// red pos safe / blue neg safe
+			// set up
+			chassis.setPose(0, 0, -110);
+			clamp.set_value(false);
+			red = true;
+
+			// score preload on alliance stake
+			target = 19500;
+			pros::delay(500);
+			target = 0;
+
+			// get ring on top of opp ring and hold in first stage
+			chassis.moveToPoint(5, 5, 1000, {.forwards = false});
+			chassis.waitUntilDone();
+			doinker.set_value(true);
+			chassis.moveToPoint(-1, 7, 1000);
+			chassis.waitUntilDone();
+			chassis.turnToHeading(20, 750, {.maxSpeed = 50});
+			chassis.waitUntilDone();
+			chassis.turnToHeading(0, 750);
+			firstStageOnly = true;
+			chassis.moveToPoint(-2, 18, 1000);
+			chassis.waitUntilDone();
+			doinker.set_value(false);
+
+			// get mogo
+			chassis.turnToHeading(200, 750, {.maxSpeed = 70});
+			chassis.waitUntilDone();
+			chassis.moveToPoint(9, 35, 1000, {.forwards = false, .maxSpeed = 70});
+			chassis.waitUntilDone();
+			pros::delay(200);
+			clamp.set_value(true);
+			pros::delay(100);
+
+			// get ring
+			chassis.turnToHeading(90, 750);
+			firstStageOnly = false;
+			intakeSpin = true;
+			chassis.waitUntilDone();
+			chassis.moveToPoint(28, 37, 1000);
+			chassis.waitUntilDone();
+			pros::delay(1000);
+
+			clamp.set_value(false);
+			chassis.turnToHeading(180, 500);
+			chassis.waitUntilDone();
+			chassis.moveToPoint(27, 52, 1000, {.forwards = false});
+			chassis.waitUntilDone();
+			clamp.set_value(true);
+
+			// // go to corner to sweep it
+			// chassis.turnToHeading(145, 750);
+			// chassis.waitUntilDone();
+			// chassis.moveToPoint(47, 9, 2000);
+			// chassis.waitUntilDone();
+			// chassis.turnToHeading(135, 500);
+			// chassis.waitUntilDone();
+			// intakeSpin = false;
+			// doinker.set_value(true);
+			// pros::delay(500);
+			// chassis.turnToHeading(225, 750);
+			// chassis.waitUntilDone();
+			// doinker.set_value(false);
+			// chassis.turnToHeading(200, 1000);
+			// chassis.waitUntilDone();
+			// intakeSpin = true;
+			// chassis.moveToPoint(45, -5, 1000, {.maxSpeed = 70});
+			// chassis.waitUntilDone();
+			// chassis.moveToPoint(45, 5, 1000, {.forwards = false, .maxSpeed = 70});
 
 			break;
 		case 7:
-		//
+		// blue pos safe / red neg safe
 
 			break;
 		case 8:
@@ -372,11 +573,13 @@ void autonomous() {
 			// set up
 			chassis.setPose(0, 0, 0);
 			clamp.set_value(false);
+			red = true;
 
 			// score alliance stake
-			intake_motors.move(127);
+			intakeSpin = true; //intake_motors.move(127);
 			pros::delay(500);
-			intake_motors.move(-127);
+			reverse = false;
+			intakeSpin = false; //intake_motors.move(-127);
 
 			// move off alliance stake
 			chassis.moveToPoint(0, 10, 500);
@@ -392,7 +595,8 @@ void autonomous() {
 			// get first ring (1/6 on first mogo)
 			chassis.turnToHeading(0, 750);
 			chassis.waitUntilDone();
-			intake_motors.move(127);
+			reverse = false;
+			intakeSpin = true; //intake_motors.move(127);
 			chassis.moveToPoint(20, 30, 1000);
 			chassis.waitUntilDone();
 
@@ -424,7 +628,7 @@ void autonomous() {
 			chassis.waitUntilDone();
 			nextState();
 			pros::delay(200);
-			intake_motors.move(127);
+			intakeSpin = true; //intake_motors.move(127);
 			chassis.waitUntilDone();
 			chassis.turnToHeading(180, 750);
 			chassis.waitUntilDone();
@@ -451,7 +655,7 @@ void autonomous() {
 			chassis.waitUntilDone();
 			chassis.moveToPoint(63, -7, 1000, {.forwards = false});
 			chassis.waitUntilDone();
-			intake_motors.move(0);
+			intakeSpin = false; //intake_motors.move(0);
 			clamp.set_value(false);
 
 			//
@@ -474,7 +678,7 @@ void autonomous() {
 			// get ring (1/6 on second mogo)
 			chassis.turnToHeading(5, 750);
 			chassis.waitUntilDone();
-			intake_motors.move(127);
+			intakeSpin = true; //intake_motors.move(127);
 			chassis.moveToPoint(-3, 9, 1000); // x = 25
 			chassis.waitUntilDone();
 
@@ -494,7 +698,7 @@ void autonomous() {
 			chassis.moveToPoint(-37, 45, 1500, {.maxSpeed = 30}); // x = 48
 			chassis.waitUntilDone();
 			nextState();
-			intake.move(127);
+			intakeSpin = true; //intake.move(127);
 			pros::delay(500);
 
 			// move off wall stake
@@ -502,7 +706,7 @@ void autonomous() {
 			chassis.waitUntilDone();
 			nextState();
 			pros::delay(200);
-			intake_motors.move(127);
+			intakeSpin = true; //intake_motors.move(127);
 			chassis.waitUntilDone();
 			chassis.turnToHeading(180, 750);
 			chassis.waitUntilDone();
@@ -571,25 +775,26 @@ void autonomous() {
 			states[2] = 19000;
 			nextState();
 			pros::delay(1000);
-			intake_motors.move(0);
+			intakeSpin = false; //intake_motors.move(0);
 
 			// move off blue alliance stake
 			chassis.moveToPoint(26, 70, 1000, {.forwards = false}); // x = -1 // y = 75
-			intake_motors.move(0);
+			intakeSpin = false; //intake_motors.move(0);
 			chassis.waitUntilDone();
 
 			// get next ring (1/6 on third mogo)
 			chassis.turnToHeading(130, 750);
 			chassis.waitUntilDone();
 			target = 6000;
-			intake.move(127);
+			firstStageOnly = true; //intake.move(127);
 			chassis.moveToPoint(44, 60, 1000); // 14 59
 			chassis.waitUntilDone();
 
 			// get next ring (2/6 on third mogo)
 			chassis.turnToHeading(45, 750);
 			chassis.waitUntilDone();
-			intake_motors.move(127);
+			firstStageOnly = false;
+			intakeSpin = true; //intake_motors.move(127);
 			chassis.moveToPoint(67, 73, 1000); // 37 70
 			chassis.waitUntilDone();
 
@@ -603,9 +808,9 @@ void autonomous() {
 			// get last ring (4/6 on third mogo)
 			chassis.moveToPoint(81, 80, 1000); // 50 77
 			chassis.waitUntilDone();
-			intake_motors.move(0);
-			hooks.move(127);
-			intake.move(-127);
+			intakeSpin = false; //intake_motors.move(0);
+			//hooks.move(127);
+			intakeSpin = false; //intake.move(-127);
 			pros::delay(300);
 
 			// put third mogo in corner
@@ -617,14 +822,14 @@ void autonomous() {
 			chassis.turnToHeading(225, 750);
 			chassis.waitUntilDone();
 			clamp.set_value(false);
-			hooks.move(0);
+			//hooks.move(0);
 			chassis.moveToPoint(92, 92, 1000, {.forwards = false}); // 57 90
 			chassis.waitUntilDone();
 			clamp.set_value(false);
 
 			// push last mogo in corner
 			chassis.moveToPoint(59, 85, 1000); // 30 85
-			intake.move(0);
+			//intakeSpin = false; //intake.move(0);
 			chassis.moveToPoint(29, 100, 1000); // 0 100
 			chassis.moveToPoint(-1, 103, 1000); // -30 105
 			chassis.moveToPoint(-29, 110, 1000); // -55 110
@@ -632,6 +837,275 @@ void autonomous() {
 			break;
 		case 11:
 		// SKILLS (aneeks field)
+			// set up
+			chassis.setPose(0, 0, 0);
+			clamp.set_value(false);
+			red = true;
+			states[2] = 18000;
+			skills = true;
+
+			// score alliance stake
+			intakeSpin = true; //intake_motors.move(127);
+			pros::delay(500);
+			reverse = false;
+			intakeSpin = false; //intake_motors.move(-127);
+
+			// move off alliance stake
+			chassis.moveToPoint(0, 10, 500);
+			chassis.turnToHeading(270, 500);
+
+			// get first mogo
+			chassis.moveToPoint(15, 12, 1000, {.forwards = false, .maxSpeed = 70});
+			chassis.waitUntilDone();
+			//pros::delay(300);
+			clamp.set_value(true);
+			//pros::delay(200);
+
+			// get first ring (1/6 on first mogo)
+			chassis.turnToHeading(0, 750);
+			chassis.waitUntilDone();
+			reverse = false;
+			intakeSpin = true; //intake_motors.move(127);
+			chassis.moveToPoint(20, 30, 1000);
+			chassis.waitUntilDone();
+
+			// get next ring (put in lb)
+			chassis.turnToHeading(60, 500);
+			chassis.moveToPoint(41, 73, 1500, {.maxSpeed = 100});
+			firstStageOnly = true;
+			intakeSpin = false;
+			//pros::delay(1000);
+			nextState();
+			chassis.waitUntilDone();
+			//pros::delay(500);
+
+			// score ring on first wall stake and put next ring in intake
+			chassis.turnToHeading(200, 750);
+			chassis.waitUntilDone();
+			intakeSpin = true;
+			firstStageOnly = false;
+			chassis.moveToPoint(40, 60.6, 1000, {.maxSpeed = 100});
+			chassis.waitUntilDone();
+			chassis.turnToHeading(90, 750);
+			chassis.waitUntilDone();
+			chassis.moveToPoint(50, 57.1, 500, {.maxSpeed = 70});
+			chassis.waitUntilDone();
+			chassis.moveToPoint(59, 57.1, 1500, {.maxSpeed = 30});
+			chassis.waitUntilDone();
+			nextState();
+			intake.move(127);
+			pros::delay(500);
+
+			// back off alliance stake and score (2/6 on first mogo)
+			chassis.moveToPoint(43, 57.1, 1000, {.forwards = false, .maxSpeed = 70});
+			chassis.waitUntilDone();
+			nextState();
+			pros::delay(200);
+			intakeSpin = true; //intake_motors.move(127);
+			chassis.waitUntilDone();
+			chassis.turnToHeading(180, 750);
+			chassis.waitUntilDone();
+
+			// get next ring (3/6 on first mogo)
+			chassis.moveToPoint(45, 40, 1000);
+			chassis.waitUntilDone();
+
+			// get next rings (4/6 and 5/6 on first mogo)
+			chassis.moveToPoint(46, 15, 1000, {.maxSpeed = 70});
+			chassis.waitUntilDone();
+			chassis.moveToPoint(46, 0, 1500, {.maxSpeed = 50});
+			chassis.waitUntilDone();
+			pros::delay(500);
+
+			// get last ring (6/6 on first mogo)
+			chassis.turnToHeading(55, 750);
+			chassis.waitUntilDone();
+			chassis.moveToPoint(54, 0, 1500);
+			chassis.waitUntilDone();
+
+			// put first full mogo in corner
+			chassis.turnToHeading(330, 750);
+			chassis.waitUntilDone();
+			chassis.moveToPoint(63, -7, 1000, {.forwards = false});
+			chassis.waitUntilDone();
+			intakeSpin = false; //intake_motors.move(0);
+			clamp.set_value(false);
+
+			//
+			// CROSS MIDDLE
+			//
+
+			// get second mogo (closest on left side)
+			chassis.moveToPoint(30, -5, 1000);
+			chassis.waitUntilDone();
+			chassis.turnToHeading(90, 750);
+			chassis.waitUntilDone();
+			chassis.moveToPoint(12, -9, 500, {.forwards = false});
+			//chassis.moveToPoint(-10, -8, 500, {.forwards = false});
+			chassis.moveToPoint(-4, -9, 1000, {.forwards = false, .maxSpeed = 70}); // -6
+			chassis.waitUntilDone();
+			//pros::delay(100);
+			clamp.set_value(true);
+			//pros::delay(200);
+
+			// get ring (1/6 on second mogo)
+			chassis.turnToHeading(5, 750);
+			chassis.waitUntilDone();
+			intakeSpin = true; //intake_motors.move(127);
+			chassis.moveToPoint(-6, 7, 1000); // x = -3
+			chassis.waitUntilDone();
+
+			// get next ring and load into lb
+			chassis.moveToPoint(-19, 25, 500); // x = -17
+			chassis.moveToPoint(-24, 56, 1000); // x = -22
+			chassis.waitUntilDone();
+			nextState();
+
+			// score on second wall stake and put other ring in mogo (2/6 on second mogo)
+			chassis.moveToPoint(-16, 41, 1000, {.forwards = false}); // x = -13
+			chassis.waitUntilDone();
+			chassis.turnToHeading(270, 750);
+			chassis.waitUntilDone();
+			chassis.moveToPoint(-25, 44, 1500, {.maxSpeed = 70}); // x = -22
+			chassis.waitUntilDone();
+			chassis.moveToPoint(-40, 44, 1500, {.maxSpeed = 30}); // x = -37
+			chassis.waitUntilDone();
+			nextState();
+			intakeSpin = true; //intake.move(127);
+			pros::delay(500);
+
+			// move off wall stake
+			chassis.moveToPoint(-18, 43, 1000, {.forwards = false}); // x = -15
+			chassis.waitUntilDone();
+			nextState();
+			pros::delay(200);
+			intakeSpin = true; //intake_motors.move(127);
+			chassis.waitUntilDone();
+			chassis.turnToHeading(180, 750);
+			chassis.waitUntilDone();
+
+			// get next ring (3/6 on second mogo)
+			chassis.moveToPoint(-20, 25, 1000); // x = -18
+			chassis.waitUntilDone();
+
+			// get next rings (4/6 and 5/6 on second mogo)
+			chassis.moveToPoint(-19, -5, 1000, {.maxSpeed = 70}); // x = -17
+			chassis.waitUntilDone();
+			chassis.moveToPoint(-19, -12, 1500, {.maxSpeed = 50}); // x = -17
+			chassis.waitUntilDone();
+			pros::delay(500);
+
+			// get last ring (6/6 on second mogo)
+			chassis.turnToHeading(305, 750);
+			chassis.waitUntilDone();
+			chassis.moveToPoint(-25, -10, 1500); //  x = -22
+			chassis.waitUntilDone();
+
+			// put second full mogo in corner
+			chassis.turnToHeading(20, 750);
+			chassis.waitUntilDone();
+			chassis.moveToPoint(-35, -19, 1000, {.forwards = false}); // x = -32
+			chassis.waitUntilDone();
+			clamp.set_value(false);
+
+			//
+			// CROSS TO FAR
+			//
+
+			// ring and put in intake before 3rd mogo
+			chassis.moveToPoint(-28, 0, 500); // x = 45
+			chassis.moveToPoint(-28, 20, 500); // x = 45
+			chassis.moveToPoint(-24, 30, 500); // x = 41 // y = 34
+			chassis.waitUntilDone();
+			nextState();
+			chassis.turnToHeading(50, 750);
+			chassis.waitUntilDone();
+			chassis.moveToPoint(4, 58, 1500, {.maxSpeed = 70}); // x = 22 // y = 56
+			chassis.waitUntilDone();
+
+			// keep ring in lb and clamp 3rd mogo
+			chassis.turnToHeading(225, 750);
+			chassis.waitUntilDone();
+			chassis.moveToPoint(30, 90, 1000, {.forwards = false, .maxSpeed = 70}); // x = 33 // y = 85
+			chassis.waitUntilDone();
+			//pros::delay(100);
+			clamp.set_value(true);
+			//pros::delay(200);
+			
+			// allign with blue alliance stake
+			chassis.turnToHeading(0, 750);
+			chassis.waitUntilDone();
+			chassis.moveToPoint(24, 96, 1000); // x = -1 // y = 90
+			chassis.waitUntilDone();
+			pros::delay(200);
+			left_motors.move(-127);
+			right_motors.move(-127);
+			pros::delay(90);
+			left_motors.move(0);
+			right_motors.move(0);
+
+			// score on blue alliance stake
+			states[2] = 19000;
+			nextState();
+			pros::delay(1000);
+			intakeSpin = false; //intake_motors.move(0);
+
+			// move off blue alliance stake
+			chassis.moveToPoint(24, 70, 1000, {.forwards = false}); // x = -1 // y = 75
+			intakeSpin = false; //intake_motors.move(0);
+			chassis.waitUntilDone();
+
+			// get next ring (1/6 on third mogo)
+			chassis.turnToHeading(130, 750);
+			chassis.waitUntilDone();
+			target = 6000;
+			firstStageOnly = true; //intake.move(127);
+			chassis.moveToPoint(40, 59, 1000); // 14 59
+			chassis.waitUntilDone();
+
+			// get next ring (2/6 on third mogo)
+			chassis.turnToHeading(45, 750);
+			chassis.waitUntilDone();
+			firstStageOnly = false;
+			intakeSpin = true; //intake_motors.move(127);
+			chassis.moveToPoint(65, 71, 1000); // 37 70
+			chassis.waitUntilDone();
+
+			// get next ring (3/6 on third mogo)
+			chassis.turnToHeading(0, 500);
+			chassis.moveToPoint(70, 81, 1000); // 42 80
+			chassis.waitUntilDone();
+			chassis.turnToHeading(115, 750);
+			chassis.waitUntilDone();
+
+			// get last ring (4/6 on third mogo)
+			chassis.moveToPoint(81, 80, 1000); // 50 77
+			chassis.waitUntilDone();
+			intakeSpin = false; //intake_motors.move(0);
+			//hooks.move(127);
+			intakeSpin = false; //intake.move(-127);
+			pros::delay(300);
+
+			// put third mogo in corner
+			doinker.set_value(true);
+			chassis.turnToHeading(0, 750);
+			chassis.waitUntilDone();
+			doinker.set_value(false);
+
+			chassis.turnToHeading(225, 750);
+			chassis.waitUntilDone();
+			clamp.set_value(false);
+			//hooks.move(0);
+			chassis.moveToPoint(93, 93, 1000, {.forwards = false}); // 57 90
+			chassis.waitUntilDone();
+			clamp.set_value(false);
+
+			// push last mogo in corner
+			chassis.moveToPoint(59, 75, 1000); // 30 85
+			//intakeSpin = false; //intake.move(0);
+			chassis.moveToPoint(29, 90, 1000); // 0 100
+			chassis.moveToPoint(-1, 93, 1000); // -30 105
+			chassis.moveToPoint(-29, 105, 1000); // -55 110
 
 			break;
     }
@@ -681,15 +1155,14 @@ void opcontrol() {
         right_motors.move(expR);
 
 
-		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R1) && colorIsCorrect == true) {
-			intake.move(127);
-			hooks.move(127);
+		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R1)) {
+			intakeSpin = true;
 		} else if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2)) {
-			intake.move(-127);
-			hooks.move(-127);
+			reverse = true;
+			intakeSpin = false;
 		} else {
-			intake.move(0);
-			hooks.move(0);
+			reverse = false;
+			intakeSpin = false;
 		}
 
 		// Single button mogo clamp
@@ -707,20 +1180,21 @@ void opcontrol() {
 		}
 
 		// 360 macro
-		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_UP)) {
+		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_RIGHT)) {
 			intake_motors.move(-127);
-			target = 19000;
+			target = 25000;
 			in360 = true;
 		}
 
 		// alliance stake macro
-		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_DOWN)) {
+		if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_Y)) {
 			left_motors.move(-127);
 			right_motors.move(-127);
-			pros::delay(100);
+			pros::delay(57);
 			left_motors.move(0);
 			right_motors.move(0);
-			intake_motors.move(-127);
+			reverse = true;
+			intakeSpin = false;
 			target = 21000;
 		}
 
@@ -735,7 +1209,7 @@ void opcontrol() {
 			if (in360 == false) {
 				nextState();
 			} else{
-				target = states[currentState];
+				target = states[0];
 				in360 = false;
 			}
 		}
